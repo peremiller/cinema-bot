@@ -29,6 +29,7 @@ from telegram import (
 )
 from telegram.constants import ParseMode
 from telegram.ext import (
+    AIORateLimiter,
     Application,
     CommandHandler,
     ContextTypes,
@@ -180,7 +181,10 @@ async def deliver_movie(bot, chat_id: int, m: dict):
 
 async def send_now_playing(bot, chat_id: int, movies: list, loc: dict,
                            headline: str = "🎬 Now playing near"):
-    """Send the postcard collage FIRST, then one rich detail card per film."""
+    """Send the postcard collage FIRST, then one rich detail card per film.
+
+    The postcard and the detail cards render the SAME list (`shown`) so there is
+    never a film on the postcard that's missing from the messages below it."""
     city = loc.get("city", "")
     shown = movies[: postcard.MAX]
     caption = (
@@ -189,7 +193,7 @@ async def send_now_playing(bot, chat_id: int, movies: list, loc: dict,
         f"<i>📍 Not in {html.escape(city)}? Share your location to update.</i>"
     )
     try:
-        bio = await asyncio.to_thread(postcard.build_postcard, movies, city)
+        bio = await asyncio.to_thread(postcard.build_postcard, shown, city)
         await bot.send_photo(
             chat_id=chat_id, photo=bio, caption=caption, parse_mode=ParseMode.HTML
         )
@@ -198,11 +202,16 @@ async def send_now_playing(bot, chat_id: int, movies: list, loc: dict,
         await bot.send_message(
             chat_id=chat_id, text=caption, parse_mode=ParseMode.HTML
         )
-    for m in movies:
-        try:
-            await deliver_movie(bot, chat_id, m)
-        except Exception as exc:  # noqa: BLE001
-            log.warning("Failed to render movie %s: %s", m.get("title"), exc)
+    for m in shown:
+        # One card per postcard film; retry once so a transient send error never
+        # leaves a gap between the postcard and the list.
+        for attempt in (1, 2):
+            try:
+                await deliver_movie(bot, chat_id, m)
+                break
+            except Exception as exc:  # noqa: BLE001
+                log.warning("Card send failed (%s, attempt %d): %s",
+                            m.get("title"), attempt, exc)
 
 
 # --------------------------------------------------------------------------
@@ -429,7 +438,7 @@ async def cmd_movies(update: Update, _ctx: ContextTypes.DEFAULT_TYPE):
         return
     await update.effective_chat.send_action("typing")
     try:
-        movies = await asyncio.to_thread(providers.get_now_showing, loc, 8)
+        movies = await asyncio.to_thread(providers.get_now_showing, loc, postcard.MAX)
     except Exception as exc:  # noqa: BLE001
         await update.message.reply_text(f"Couldn't fetch movies: {exc}")
         return
@@ -587,6 +596,7 @@ def main():
         Application.builder()
         .token(config.TELEGRAM_BOT_TOKEN)
         .defaults(Defaults(tzinfo=LOCAL_TZ))
+        .rate_limiter(AIORateLimiter())  # pace sends + auto-retry on flood control
         .post_init(post_init)
         .build()
     )
