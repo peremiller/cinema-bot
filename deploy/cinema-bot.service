@@ -1,0 +1,18 @@
+# Reference systemd unit (setup.sh generates the real one with your username).
+# Manual install: edit User/paths, copy to /etc/systemd/system/, then
+#   sudo systemctl daemon-reload && sudo systemctl enable --now cinema-bot
+[Unit]
+Description=Cinema Finder Telegram Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/cinema-bot
+ExecStart=/opt/cinema-bot/.venv/bin/python /opt/cinema-bot/bot.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

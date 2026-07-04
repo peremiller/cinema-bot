@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Cinema Finder logo">
+  <defs>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f5d178"/>
+      <stop offset="1" stop-color="#e0ad3c"/>
+    </linearGradient>
+    <linearGradient id="blue" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#62b2f6"/>
+      <stop offset="1" stop-color="#3f86d6"/>
+    </linearGradient>
+  </defs>
+
+  <!-- ground shadow -->
+  <ellipse cx="256" cy="470" rx="72" ry="15" fill="#000" opacity="0.18"/>
+
+  <!-- location pin -->
+  <path d="M256 36
+           C168 36 100 104 100 192
+           C100 288 198 390 240 448
+           a20 20 0 0 0 32 0
+           C314 390 412 288 412 192
+           C412 104 344 36 256 36 Z"
+        fill="url(#gold)"/>
+
+  <!-- dark inset 'screen' -->
+  <circle cx="256" cy="188" r="98" fill="#0b0e14"/>
+  <!-- blue accent ring -->
+  <circle cx="256" cy="188" r="98" fill="none" stroke="url(#blue)" stroke-width="8"/>
+
+  <!-- play button -->
+  <path d="M232 142 L232 234 L314 188 Z" fill="url(#gold)"/>
+</svg>

@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Cinema Finder icon">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1c2436"/>
+      <stop offset="1" stop-color="#0b0e14"/>
+    </linearGradient>
+    <linearGradient id="gold2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f5d178"/>
+      <stop offset="1" stop-color="#e0ad3c"/>
+    </linearGradient>
+    <linearGradient id="blue2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#62b2f6"/>
+      <stop offset="1" stop-color="#3f86d6"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="512" height="512" rx="116" fill="url(#bg)"/>
+
+  <g transform="translate(78 64) scale(0.695)">
+    <ellipse cx="256" cy="470" rx="72" ry="15" fill="#000" opacity="0.22"/>
+    <path d="M256 36
+             C168 36 100 104 100 192
+             C100 288 198 390 240 448
+             a20 20 0 0 0 32 0
+             C314 390 412 288 412 192
+             C412 104 344 36 256 36 Z"
+          fill="url(#gold2)"/>
+    <circle cx="256" cy="188" r="98" fill="#0b0e14"/>
+    <circle cx="256" cy="188" r="98" fill="none" stroke="url(#blue2)" stroke-width="8"/>
+    <path d="M232 142 L232 234 L314 188 Z" fill="url(#gold2)"/>
+  </g>
+</svg>
