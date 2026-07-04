@@ -17,18 +17,38 @@ import config
 import geocode
 
 CACHE_PATH = os.path.join(config.DATA_DIR, "mall_coords.json")
+# Committed seed (ships in the repo) so a fresh machine starts warm and the
+# cinema list is nearest-first from the very first call.
+SEED_PATH = os.path.join(os.path.dirname(__file__), "mall_coords.seed.json")
 _MIN_INTERVAL = 1.1  # seconds between live geocodes (Nominatim politeness)
 
 _lock = threading.Lock()
 _last_call = [0.0]
+_seed = None
 
 
-def _load() -> dict:
+def _load_seed() -> dict:
+    global _seed
+    if _seed is None:
+        try:
+            with open(SEED_PATH, "r", encoding="utf-8") as fh:
+                _seed = json.load(fh)
+        except (FileNotFoundError, json.JSONDecodeError):
+            _seed = {}
+    return _seed
+
+
+def _load_runtime() -> dict:
     try:
         with open(CACHE_PATH, "r", encoding="utf-8") as fh:
             return json.load(fh)
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
+
+
+def _load() -> dict:
+    """Merged view: committed seed as base, runtime cache wins on conflict."""
+    return {**_load_seed(), **_load_runtime()}
 
 
 def _save(data: dict) -> None:
@@ -58,9 +78,9 @@ def _geocode_live(mall: str, city: str, key: str):
     except Exception:
         val = None
     with _lock:
-        cache = _load()
-        cache[key] = val
-        _save(cache)
+        rt = _load_runtime()
+        rt[key] = val
+        _save(rt)
     return val
 
 

@@ -228,6 +228,7 @@ WELCOME = (
     "3. <code>/movies</code> — see what's on near you\n"
     "4. <code>/movie Dune</code> — details + showtimes for one film\n\n"
     "📅 <code>/subscribe 09:00</code> — get a daily push of what's playing near you.\n"
+    "📍 <code>/location</code> — share or update where you are anytime.\n"
     "Tip: you can also just send me a movie title."
 )
 
@@ -238,12 +239,31 @@ async def cmd_start(update: Update, _ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_html(WELCOME, reply_markup=markup)
 
 
+async def cmd_location(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Share or update the current location at any time."""
+    query = " ".join(ctx.args).strip()
+    if query:  # /location City, Country works like /setlocation
+        await cmd_setlocation(update, ctx)
+        return
+    loc = get_effective_location(update.effective_chat.id)
+    current = (f"📍 Current: <b>{html.escape(loc.get('city',''))}</b>.\n\n"
+               if loc else "")
+    await update.message.reply_html(
+        current
+        + "Tap <b>📍 Share my location</b> below to update to where you are now, "
+        + "or send <code>/setlocation City, Country</code>.",
+        reply_markup=location_keyboard(),
+    )
+
+
 async def cmd_setlocation(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     query = " ".join(ctx.args).strip()
     if not query:
         await update.message.reply_html(
             "Usage: <code>/setlocation City, Country</code>\n"
-            "e.g. <code>/setlocation Cebu City, Philippines</code>"
+            "e.g. <code>/setlocation Cebu City, Philippines</code>\n\n"
+            "Or tap the button to share your current location:",
+            reply_markup=location_keyboard(),
         )
         return
     await update.effective_chat.send_action("typing")
@@ -355,11 +375,13 @@ async def cmd_cinemas(update: Update, _ctx: ContextTypes.DEFAULT_TYPE):
         if not found:
             await update.message.reply_text("No cinema schedules found for your area right now.")
             return
-        # Attach real distances by geocoding each cinema's mall (cached), then
-        # put the nearest cinemas first; any without a known distance follow.
+        # Geocode every candidate mall (cached) and sort strictly by distance so
+        # the nearest cinema is on top; any without a known distance sink below.
         if loc.get("lat") is not None:
             try:
-                await asyncio.to_thread(mallgeo.attach_distances, found, loc["lat"], loc["lon"])
+                await asyncio.to_thread(
+                    mallgeo.attach_distances, found, loc["lat"], loc["lon"], len(found)
+                )
             except Exception as exc:  # noqa: BLE001
                 log.warning("Mall distance lookup failed: %s", exc)
             found.sort(key=lambda c: (c.get("distance_km") is None,
@@ -562,7 +584,8 @@ BOT_COMMANDS = [
     BotCommand("movies", "What's playing in cinemas near you"),
     BotCommand("cinemas", "Cinemas near you, with distance"),
     BotCommand("movie", "Details + showtimes for one film"),
-    BotCommand("setlocation", "Set your city (any country)"),
+    BotCommand("location", "Share / update your current location"),
+    BotCommand("setlocation", "Set your city by name (any country)"),
     BotCommand("where", "Show your saved location"),
     BotCommand("subscribe", "Daily push of what's playing (e.g. /subscribe 09:00)"),
     BotCommand("unsubscribe", "Stop the daily push"),
@@ -602,6 +625,7 @@ def main():
     )
     app.add_handler(CommandHandler(["start", "help"], cmd_start))
     app.add_handler(CommandHandler("setlocation", cmd_setlocation))
+    app.add_handler(CommandHandler("location", cmd_location))
     app.add_handler(CommandHandler("where", cmd_where))
     app.add_handler(CommandHandler("cinemas", cmd_cinemas))
     app.add_handler(CommandHandler("movies", cmd_movies))

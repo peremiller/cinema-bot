@@ -55,13 +55,27 @@ def _norm(s: str) -> str:
     return (s or "").lower().replace("ñ", "n").strip()
 
 
-def cinemas_now_showing(user_city: str, movie_cap: int = 12, max_cinemas: int = 10):
+def _time_key(t: str) -> int:
+    """Sort key for a schedule string like '3:45 PM' -> minutes since midnight."""
+    try:
+        s = t.strip().upper()
+        ampm = s[-2:]
+        h, m = s[:-2].strip().split(":")
+        h = int(h) % 12 + (12 if ampm == "PM" else 0)
+        return h * 60 + int(m)
+    except Exception:
+        return 9999
+
+
+def cinemas_now_showing(user_city: str, movie_cap: int = 12, max_cinemas: int = 40):
     """Cinema-centric view: nearby cinemas and what's playing at each, with times.
 
     Aggregates the per-film showtimes of the current now-showing slate into a map
-    of theater -> [(movie, times)]. Scopes to the user's city, then their
-    province, then nationwide. Returns (cinemas, scope_label).
-    Each cinema: {name, city, province, url, movies: [(title, [times])]}.
+    of mall -> [(movie, times)]. Cinemas are grouped by MALL (screens merged) so
+    each entry is a distinct venue. Scopes to the user's city, then their
+    province, then nationwide. Returns (cinemas, scope_label). The caller sorts
+    by distance; ordering here is only a fallback when no coordinates are known.
+    Each cinema: {name, mall, city, province, url, movies: [(title, [times])]}.
     """
     movies = now_showing(movie_cap)
 
@@ -82,33 +96,42 @@ def cinemas_now_showing(user_city: str, movie_cap: int = 12, max_cinemas: int = 
         if city_prov:
             break
 
-    theaters: dict = {}
+    # Group by mall+city; merge each film's times across the mall's screens.
+    malls: dict = {}
     for title, j in results:
         for t in j.get("data", []) or []:
             times = t.get("schedule") or []
             if not times:
                 continue
-            key = (t.get("theater_name"), t.get("city"))
-            ent = theaters.setdefault(
+            mall = (t.get("mall_name") or t.get("theater_name") or "Cinema").strip()
+            city = (t.get("city", "") or "").strip()
+            key = (mall.lower(), city.lower())
+            ent = malls.setdefault(
                 key,
                 {
-                    "name": (t.get("theater_name") or t.get("mall_name") or "Cinema").strip(),
-                    "mall": (t.get("mall_name") or "").strip(),
-                    "city": (t.get("city", "") or "").strip(),
-                    "province": city_prov.get(_norm(t.get("city", "")), ""),
+                    "name": mall,
+                    "mall": mall,
+                    "city": city,
+                    "province": city_prov.get(_norm(city), ""),
                     "url": t.get("url"),
-                    "movies": [],
+                    "_by_title": {},
                 },
             )
-            ent["movies"].append((title, times))
+            ent["_by_title"].setdefault(title, set()).update(times)
 
-    all_cinemas = list(theaters.values())
+    all_cinemas = []
+    for ent in malls.values():
+        ent["movies"] = [
+            (title, sorted(ts, key=_time_key))
+            for title, ts in ent.pop("_by_title").items()
+        ]
+        all_cinemas.append(ent)
+
     ucl = _norm(user_city)
     busiest = lambda c: (-len(c["movies"]), c["city"], c["name"])
 
-    in_city = sorted([c for c in all_cinemas if ucl and ucl in _norm(c["city"])], key=busiest)
-    # User's province: exact directory hit, else a fuzzy city match ("Las Piñas"
-    # vs "Las Piñas City"), else inferred from their own city's cinemas.
+    in_city = [c for c in all_cinemas if ucl and ucl in _norm(c["city"])]
+    # User's province: exact directory hit, else fuzzy city match, else inferred.
     user_prov = city_prov.get(ucl, "")
     if not user_prov and ucl:
         for ck, prov in city_prov.items():
@@ -118,21 +141,17 @@ def cinemas_now_showing(user_city: str, movie_cap: int = 12, max_cinemas: int = 
     if not user_prov and in_city:
         user_prov = in_city[0]["province"]
     city_ids = {id(c) for c in in_city}
-    in_prov = sorted(
-        [c for c in all_cinemas if user_prov and c["province"] == user_prov and id(c) not in city_ids],
-        key=busiest,
-    )
+    in_prov = [c for c in all_cinemas
+               if user_prov and c["province"] == user_prov and id(c) not in city_ids]
 
-    # City cinemas first, then the rest of the province to fill out the list.
-    ordered = in_city + in_prov
     if in_city and in_prov:
-        scope = f"near {user_city}"
+        ordered, scope = in_city + in_prov, f"near {user_city}"
     elif in_city:
-        scope = f"in {user_city}"
+        ordered, scope = in_city, f"in {user_city}"
     elif in_prov:
-        scope = f"in {user_prov}"
+        ordered, scope = in_prov, f"in {user_prov}"
     else:
-        ordered = sorted(all_cinemas, key=busiest)
-        scope = "across the Philippines"
+        ordered, scope = all_cinemas, "across the Philippines"
 
+    ordered.sort(key=busiest)  # fallback order; caller re-sorts by distance
     return ordered[:max_cinemas], scope

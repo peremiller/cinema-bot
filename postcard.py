@@ -127,16 +127,17 @@ def build_postcard(movies: list[dict], city: str) -> BytesIO:
         title = _truncate(draw, m.get("title", "Untitled"), f_name, POSTER_W)
         draw.text((x, ty), title, font=f_name, fill=TEXT)
         cy = ty + 32
-        rating = m.get("rating10") or 0
-        if rating:
-            _draw_star(draw, x + 9, cy + 12, 10, GOLD)
-            draw.text((x + 24, cy), f"{rating:.1f}", font=f_rate, fill=GOLD)
-            cy += 30
+        # Genre first, then the rating below it.
         genres = m.get("genres_text")
         if genres:
             short = ", ".join(g.strip() for g in genres.split(",")[:2])
             short = _truncate(draw, short, f_genre, POSTER_W)
             draw.text((x, cy), short, font=f_genre, fill=MUTED)
+            cy += 28
+        rating = m.get("rating10") or 0
+        if rating:
+            _draw_star(draw, x + 9, cy + 12, 10, GOLD)
+            draw.text((x + 24, cy), f"{rating:.1f}", font=f_rate, fill=GOLD)
 
     bio = BytesIO()
     img.save(bio, "JPEG", quality=88)
