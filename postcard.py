@@ -20,7 +20,7 @@ TEXT = (232, 236, 243)
 MUTED = (154, 164, 181)
 
 POSTER_W, POSTER_H = 300, 450
-CAPTION_H = 80
+CAPTION_H = 108
 GAP = 24
 MARGIN = 30
 HEADER_H = 132
@@ -107,6 +107,7 @@ def build_postcard(movies: list[dict], city: str) -> BytesIO:
 
     f_name = _font(25, bold=True)
     f_rate = _font(23)
+    f_genre = _font(21)
     for i, m in enumerate(movies):
         col, row = i % cols, i // cols
         x = MARGIN + col * (POSTER_W + GAP)
@@ -122,13 +123,20 @@ def build_postcard(movies: list[dict], city: str) -> BytesIO:
             label = _truncate(draw, m.get("title", "?"), f_name, POSTER_W - 24)
             draw.text((x + 14, y + POSTER_H // 2 - 12), label, font=f_name, fill=TEXT)
 
-        ty = y + POSTER_H + 10
+        ty = y + POSTER_H + 8
         title = _truncate(draw, m.get("title", "Untitled"), f_name, POSTER_W)
         draw.text((x, ty), title, font=f_name, fill=TEXT)
+        cy = ty + 32
         rating = m.get("rating10") or 0
         if rating:
-            _draw_star(draw, x + 9, ty + 47, 10, GOLD)
-            draw.text((x + 24, ty + 34), f"{rating:.1f}", font=f_rate, fill=GOLD)
+            _draw_star(draw, x + 9, cy + 12, 10, GOLD)
+            draw.text((x + 24, cy), f"{rating:.1f}", font=f_rate, fill=GOLD)
+            cy += 30
+        genres = m.get("genres_text")
+        if genres:
+            short = ", ".join(g.strip() for g in genres.split(",")[:2])
+            short = _truncate(draw, short, f_genre, POSTER_W)
+            draw.text((x, cy), short, font=f_genre, fill=MUTED)
 
     bio = BytesIO()
     img.save(bio, "JPEG", quality=88)
