@@ -13,7 +13,10 @@ Normalized movie dict ("M"):
 """
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+
 import clickthecity
+import config
 import showtimes
 import tmdb
 
@@ -101,11 +104,33 @@ def normalize_tmdb(details: dict, loc: dict | None) -> dict:
     }
 
 
+def _enrich_ratings(movies: list[dict]) -> None:
+    """Fill in missing ratings from TMDB (matched by title/year), in parallel.
+    ClickTheCity user-ratings are usually 0 for new releases, so this surfaces a
+    real ⭐ score on the postcard/cards for titles TMDB knows. In-place."""
+    if not config.TMDB_API_KEY:
+        return
+    todo = [m for m in movies if not m.get("rating10")]
+    if not todo:
+        return
+
+    def fetch(m):
+        try:
+            m["rating10"] = tmdb.rating_for(m["title"], m.get("year"))
+        except Exception:  # noqa: BLE001
+            pass
+
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        list(ex.map(fetch, todo))
+
+
 def get_now_showing(loc: dict, limit: int = 8) -> list[dict]:
     """Accurate now-showing list for the user's location, as normalized movies."""
     if (loc.get("country_code") or "").upper() == "PH":
         items = clickthecity.now_showing(limit)
-        return [normalize_ctc(it, loc) for it in items]
+        movies = [normalize_ctc(it, loc) for it in items]
+        _enrich_ratings(movies)
+        return movies
     region = loc.get("country_code") or None
     out = []
     for m in tmdb.now_playing(region, limit):

@@ -42,6 +42,31 @@ def search_movie(query: str) -> dict | None:
     return results[0] if results else None
 
 
+def _norm_title(s: str) -> str:
+    return "".join(ch for ch in (s or "").lower() if ch.isalnum())
+
+
+def rating_for(title: str, year: str | None = None) -> float | None:
+    """TMDB rating (0-10) for a title, or None. Requires an EXACT title match
+    and, when both years are known, a release year within ±1 — so we never show
+    a wrong rating from an unrelated film that happens to share a title."""
+    data = _request("/search/movie", {"query": title, "language": "en-US", "page": 1})
+    results = data.get("results", [])
+    if not results:
+        return None
+    nt = _norm_title(title)
+    y = int(year) if (year and str(year).isdigit()) else None
+    for r in results:
+        if _norm_title(r.get("title", "")) != nt:
+            continue
+        ry = (r.get("release_date", "") or "")[:4]
+        ry = int(ry) if ry.isdigit() else None
+        if y is None or ry is None or abs(y - ry) <= 1:
+            v = r.get("vote_average") or 0
+            return round(v, 1) if v else None
+    return None
+
+
 def movie_details(movie_id: int) -> dict:
     """Full details incl. genres, runtime, trailer and IMDb id."""
     return _request(
