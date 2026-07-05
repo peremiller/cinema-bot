@@ -134,10 +134,21 @@ def build_postcard(movies: list[dict], city: str) -> BytesIO:
             short = _truncate(draw, short, f_genre, POSTER_W)
             draw.text((x, cy), short, font=f_genre, fill=MUTED)
             cy += 28
+        # One line: parental-guidance rating (MTRCB) left, audience ★ rating right.
+        pg = m.get("mtrcb")
+        if pg:
+            pg = str(pg)
+            pw = draw.textlength(pg, font=f_rate)
+            draw.rounded_rectangle([x, cy - 1, x + pw + 14, cy + 25], radius=5,
+                                   outline=MUTED, width=2)
+            draw.text((x + 7, cy), pg, font=f_rate, fill=TEXT)
         rating = m.get("rating10") or 0
         if rating:
-            _draw_star(draw, x + 9, cy + 12, 10, GOLD)
-            draw.text((x + 24, cy), f"{rating:.1f}", font=f_rate, fill=GOLD)
+            rtxt = f"{rating:.1f}"
+            tw = draw.textlength(rtxt, font=f_rate)
+            tx = x + POSTER_W - tw
+            draw.text((tx, cy), rtxt, font=f_rate, fill=GOLD)
+            _draw_star(draw, tx - 16, cy + 12, 10, GOLD)
 
     bio = BytesIO()
     img.save(bio, "JPEG", quality=88)
