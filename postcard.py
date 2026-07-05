@@ -77,6 +77,29 @@ def _draw_star(draw, cx: float, cy: float, r: float, fill) -> None:
     draw.polygon(pts, fill=fill)
 
 
+# MTRCB family-friendliness on a 0-10 scale (higher = more permissive audience).
+_PG_SCORE = {"G": 10, "PG": 8, "SPG": 6, "R-13": 5, "R13": 5,
+             "R-16": 3, "R16": 3, "R-18": 1, "R18": 1, "X": 0}
+
+
+def _pg_score(mtrcb: str) -> float:
+    return _PG_SCORE.get((mtrcb or "").upper().replace(" ", ""), 5)
+
+
+def _best_index(movies: list) -> int:
+    """Index of the film with the best audience + parental-guidance combo,
+    among films that actually have an audience rating. -1 if none qualify."""
+    best_i, best_score = -1, -1.0
+    for i, m in enumerate(movies):
+        r = m.get("rating10")
+        if not r:
+            continue
+        score = r + _pg_score(m.get("mtrcb"))
+        if score > best_score:
+            best_score, best_i = score, i
+    return best_i
+
+
 def _truncate(draw, text: str, font, max_w: int) -> str:
     if draw.textlength(text, font=font) <= max_w:
         return text
@@ -108,6 +131,8 @@ def build_postcard(movies: list[dict], city: str) -> BytesIO:
     f_name = _font(25, bold=True)
     f_rate = _font(23)
     f_genre = _font(21)
+    f_ribbon = _font(20, bold=True)
+    best_i = _best_index(movies)
     for i, m in enumerate(movies):
         col, row = i % cols, i // cols
         x = MARGIN + col * (POSTER_W + GAP)
@@ -120,6 +145,21 @@ def build_postcard(movies: list[dict], city: str) -> BytesIO:
             draw.rounded_rectangle(
                 [x, y, x + POSTER_W, y + POSTER_H], radius=12, fill=CARD_BG
             )
+
+        # Emphasise the best audience + parental-guidance pick.
+        if i == best_i:
+            draw.rounded_rectangle(
+                [x - 5, y - 5, x + POSTER_W + 5, y + POSTER_H + 5],
+                radius=8, outline=GOLD, width=6,
+            )
+            rib = "TOP PICK"
+            rw = draw.textlength(rib, font=f_ribbon)
+            sx = x + 8 + 12 + 9          # star centre
+            tx = sx + 9 + 8              # text start
+            draw.rounded_rectangle([x + 8, y + 8, tx + rw + 12, y + 44],
+                                   radius=8, fill=GOLD)
+            _draw_star(draw, sx, y + 26, 9, BG)
+            draw.text((tx, y + 15), rib, font=f_ribbon, fill=BG)
             label = _truncate(draw, m.get("title", "?"), f_name, POSTER_W - 24)
             draw.text((x + 14, y + POSTER_H // 2 - 12), label, font=f_name, fill=TEXT)
 
