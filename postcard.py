@@ -160,8 +160,6 @@ def build_postcard(movies: list[dict], city: str) -> BytesIO:
                                    radius=8, fill=GOLD)
             _draw_star(draw, sx, y + 26, 9, BG)
             draw.text((tx, y + 15), rib, font=f_ribbon, fill=BG)
-            label = _truncate(draw, m.get("title", "?"), f_name, POSTER_W - 24)
-            draw.text((x + 14, y + POSTER_H // 2 - 12), label, font=f_name, fill=TEXT)
 
         ty = y + POSTER_H + 8
         title = _truncate(draw, m.get("title", "Untitled"), f_name, POSTER_W)
