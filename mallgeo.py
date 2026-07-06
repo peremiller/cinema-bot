@@ -47,8 +47,13 @@ def _load_runtime() -> dict:
 
 
 def _load() -> dict:
-    """Merged view: committed seed as base, runtime cache wins on conflict."""
-    return {**_load_seed(), **_load_runtime()}
+    """Merged view: committed seed as base + runtime cache. A runtime value wins
+    UNLESS it's a null (a past failed geocode) that would clobber a good seed."""
+    merged = dict(_load_seed())
+    for k, v in _load_runtime().items():
+        if v is not None or k not in merged:
+            merged[k] = v
+    return merged
 
 
 def _save(data: dict) -> None:
@@ -66,8 +71,8 @@ def _cached(key: str):
         return (key in cache), cache.get(key)
 
 
-def _geocode_live(mall: str, city: str, key: str):
-    query = ", ".join(x for x in [mall, city, "Philippines"] if x)
+def _geocode_query(query: str, key: str):
+    """Geocode `query`, cache the result (hit or miss) under `key`, throttled."""
     wait = _MIN_INTERVAL - (time.monotonic() - _last_call[0])
     if wait > 0:
         time.sleep(wait)
@@ -84,20 +89,47 @@ def _geocode_live(mall: str, city: str, key: str):
     return val
 
 
-def attach_distances(cinemas: list, lat: float, lon: float, max_new: int = 10) -> None:
-    """Attach 'distance_km' to each cinema (in-place) via its geocoded mall.
+def _mall_coords(mall: str, city: str, allow_live: bool):
+    key = f"{(mall or '').strip()}|{(city or '').strip()}".lower()
+    present, val = _cached(key)
+    if present:
+        return tuple(val) if val else None, False
+    if allow_live:
+        v = _geocode_query(", ".join(x for x in [mall, city, "Philippines"] if x), key)
+        return (tuple(v) if v else None), True
+    return None, False
 
-    Cached malls are always resolved for free; up to `max_new` uncached malls are
-    geocoded live this call (the rest fill in on later calls as the cache warms)."""
+
+def _city_coords(city: str):
+    """City-level coordinates — the fallback so every cinema gets a distance.
+    Cities almost always geocode, so this closes the 'no distance shown' gap."""
+    city = (city or "").strip()
+    if not city:
+        return None
+    key = f"__city__|{city.lower()}"
+    present, val = _cached(key)
+    if present:
+        return tuple(val) if val else None
+    v = _geocode_query(f"{city}, Philippines", key)
+    return tuple(v) if v else None
+
+
+def attach_distances(cinemas: list, lat: float, lon: float, max_new: int = 40) -> None:
+    """Attach 'distance_km' to EVERY cinema (in-place).
+
+    Resolve each cinema's mall (seed/cache first, then a throttled live lookup,
+    up to `max_new` new ones). If the exact mall can't be geocoded, fall back to
+    the city's coordinates and mark the distance approximate (`approx=True`)."""
     new = 0
     for c in cinemas:
-        name = c.get("mall") or c.get("name")
-        key = f"{(name or '').strip()}|{(c.get('city') or '').strip()}".lower()
-        present, val = _cached(key)
-        if not present:
-            if new >= max_new:
-                continue
-            val = _geocode_live(name, c.get("city", ""), key)
+        mall = c.get("mall") or c.get("name")
+        coords, did_live = _mall_coords(mall, c.get("city", ""), allow_live=(new < max_new))
+        if did_live:
             new += 1
-        if val:
-            c["distance_km"] = geocode.haversine_km(lat, lon, val[0], val[1])
+        approx = False
+        if coords is None:
+            coords = _city_coords(c.get("city", ""))
+            approx = coords is not None
+        if coords:
+            c["distance_km"] = geocode.haversine_km(lat, lon, coords[0], coords[1])
+            c["approx"] = approx

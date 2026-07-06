@@ -392,7 +392,9 @@ async def cmd_cinemas(update: Update, _ctx: ContextTypes.DEFAULT_TYPE):
             name = html.escape(c["name"])
             head = f"<a href=\"{html.escape(link)}\"><b>{name}</b></a>" if link else f"<b>{name}</b>"
             dist = c.get("distance_km")
-            dist_str = f" · {dist:.1f} km" if dist is not None else ""
+            dist_str = ""
+            if dist is not None:
+                dist_str = f" · {'~' if c.get('approx') else ''}{dist:.1f} km"
             lines.append(f"📍 {head} — {html.escape(c['city'])}{dist_str}")
             for title, times in c["movies"][:4]:
                 lines.append(f"   • {html.escape(title)} — {html.escape(', '.join(times[:3]))}")
