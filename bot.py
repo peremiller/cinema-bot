@@ -94,6 +94,36 @@ def get_effective_location(chat_id: int):
     return None
 
 
+# How far the user must move from where their city label was resolved before we
+# re-resolve it. Keeps the shown city (and city-filtered showtimes) current.
+CITY_REFRESH_KM = 2
+
+
+async def fresh_location(chat_id: int):
+    """The effective location with its CITY re-resolved if the user has moved
+    away from where that label was determined — so movies, the postcard's city
+    and the showtimes filter all reflect where they are now."""
+    loc = get_effective_location(chat_id)
+    if not loc or loc.get("lat") is None:
+        return loc
+    glat, glon = loc.get("geo_lat"), loc.get("geo_lon")
+    if glat is not None and glon is not None:
+        moved = geocode.haversine_km(glat, glon, loc["lat"], loc["lon"])
+        if moved < CITY_REFRESH_KM:
+            return loc                      # city label still accurate
+    try:
+        fresh = await asyncio.to_thread(geocode.reverse, loc["lat"], loc["lon"])
+    except Exception as exc:  # noqa: BLE001
+        log.warning("City refresh failed: %s", exc)
+        return loc
+    fresh["geo_lat"], fresh["geo_lon"] = loc["lat"], loc["lon"]
+    store.set_location(chat_id, fresh)      # preserves any daily subscription
+    if fresh.get("city") != loc.get("city"):
+        log.info("City updated %s -> %s for chat %s",
+                 loc.get("city"), fresh.get("city"), chat_id)
+    return fresh
+
+
 # --------------------------------------------------------------------------
 # Rendering
 # --------------------------------------------------------------------------
@@ -281,7 +311,7 @@ async def cmd_setlocation(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 # Only re-run (rate-limited) reverse geocoding once the user has moved this far;
 # coordinates are always updated so cinema distances stay exact in between.
-LIVE_REFRESH_KM = 5
+LIVE_REFRESH_KM = 2
 
 
 async def on_location(update: Update, _ctx: ContextTypes.DEFAULT_TYPE):
@@ -322,6 +352,9 @@ async def on_location(update: Update, _ctx: ContextTypes.DEFAULT_TYPE):
             loc = await asyncio.to_thread(
                 geocode.reverse, loc_msg.latitude, loc_msg.longitude
             )
+            # Remember WHERE the city label was resolved, so we can tell later
+            # whether the user has moved far enough for it to be stale.
+            loc["geo_lat"], loc["geo_lon"] = loc_msg.latitude, loc_msg.longitude
         except Exception:  # noqa: BLE001
             loc = {
                 "city": (prev or {}).get("city") or "Your location",
@@ -358,7 +391,7 @@ async def cmd_cinemas(update: Update, _ctx: ContextTypes.DEFAULT_TYPE):
     """List cinemas near the user. In PH: real cinemas + what's playing + times
     (ClickTheCity), with distance when matchable. Elsewhere: nearby cinemas with
     distance (OpenStreetMap)."""
-    loc = get_effective_location(update.effective_chat.id)
+    loc = await fresh_location(update.effective_chat.id)
     if not loc:
         await update.message.reply_html(NEED_LOCATION, reply_markup=location_keyboard())
         return
@@ -452,7 +485,7 @@ def _is_ph(loc: dict | None) -> bool:
 
 
 async def cmd_movies(update: Update, _ctx: ContextTypes.DEFAULT_TYPE):
-    loc = get_effective_location(update.effective_chat.id)
+    loc = await fresh_location(update.effective_chat.id)
     if not loc:
         await update.message.reply_html(NEED_LOCATION, reply_markup=location_keyboard())
         return
@@ -536,7 +569,7 @@ def schedule_daily(job_queue, chat_id: int, hhmm: str) -> None:
 async def daily_digest_job(context: ContextTypes.DEFAULT_TYPE):
     """Push the day's now-showing movies to one subscriber."""
     chat_id = context.job.chat_id
-    loc = store.get_location(chat_id)
+    loc = await fresh_location(chat_id)
     if not loc:
         return
     if not _is_ph(loc) and not config.TMDB_API_KEY:
