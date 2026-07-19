@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import html
 import logging
+import time
 from datetime import time as dtime
 
 from telegram import (
@@ -97,6 +98,50 @@ def get_effective_location(chat_id: int):
 # How far the user must move from where their city label was resolved before we
 # re-resolve it. Keeps the shown city (and city-filtered showtimes) current.
 CITY_REFRESH_KM = 2
+# A one-time share is a snapshot — Telegram never tells us the user moved. After
+# this long we stop trusting it silently and prompt for a fresh share.
+STALE_AFTER_SEC = 2 * 3600
+
+
+def location_is_live(loc: dict | None) -> bool:
+    """True while a Telegram live-location share is still running (auto-updates)."""
+    return bool(loc) and (loc.get("live_until") or 0) > time.time()
+
+
+def location_age_sec(loc: dict | None):
+    updated = (loc or {}).get("updated")
+    return (time.time() - updated) if updated else None
+
+
+def location_is_stale(loc: dict | None) -> bool:
+    if location_is_live(loc):
+        return False                      # live share keeps it current
+    age = location_age_sec(loc)
+    return age is None or age > STALE_AFTER_SEC
+
+
+def age_text(sec: float) -> str:
+    m = int(sec // 60)
+    if m < 60:
+        return f"{m}m ago"
+    if m < 1440:
+        return f"{m // 60}h ago"
+    return f"{m // 1440}d ago"
+
+
+async def warn_if_stale_location(update: Update, loc: dict) -> None:
+    """Tell the user when we're working off an old one-time share, and give them
+    a one-tap way to fix it. Telegram can't detect movement on its own."""
+    if not location_is_stale(loc):
+        return
+    age = location_age_sec(loc)
+    when = f" (shared {age_text(age)})" if age else ""
+    await update.message.reply_html(
+        f"📍 Using your last shared location: <b>{html.escape(loc.get('city',''))}</b>{when}.\n"
+        f"If you've moved, tap <b>📍 Share my location</b> below — or share a "
+        f"<i>live</i> location and I'll follow you automatically.",
+        reply_markup=location_keyboard(),
+    )
 
 
 async def fresh_location(chat_id: int):
@@ -366,6 +411,9 @@ async def on_location(update: Update, _ctx: ContextTypes.DEFAULT_TYPE):
     else:
         loc = {**prev, "lat": loc_msg.latitude, "lon": loc_msg.longitude}
 
+    # A live share keeps auto-updating, so remember how long it runs for.
+    if is_live and getattr(loc_msg, "live_period", None):
+        loc["live_until"] = time.time() + loc_msg.live_period
     store.set_location(chat_id, loc)
 
     # Live ticks update silently — no chat spam every few seconds.
@@ -397,6 +445,7 @@ async def cmd_cinemas(update: Update, _ctx: ContextTypes.DEFAULT_TYPE):
         return
 
     if _is_ph(loc):
+        await warn_if_stale_location(update, loc)
         await update.effective_chat.send_action("typing")
         try:
             found, scope = await asyncio.to_thread(
@@ -493,6 +542,7 @@ async def cmd_movies(update: Update, _ctx: ContextTypes.DEFAULT_TYPE):
     if not _is_ph(loc) and not config.TMDB_API_KEY:
         await update.message.reply_html(TMDB_MISSING_MSG)
         return
+    await warn_if_stale_location(update, loc)
     await update.effective_chat.send_action("typing")
     try:
         movies = await asyncio.to_thread(providers.get_now_showing, loc, postcard.MAX)

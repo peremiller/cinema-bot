@@ -2,6 +2,7 @@
 import json
 import os
 import threading
+import time
 
 import config
 
@@ -37,6 +38,9 @@ def set_location(chat_id: int, location: dict) -> None:
         # Preserve a daily-digest subscription across location updates.
         if existing.get("daily"):
             location = {**location, "daily": existing["daily"]}
+        # Stamp when this position was captured, so we can tell the user when
+        # we're working off an old one-time share.
+        location = {**location, "updated": time.time()}
         data[str(chat_id)] = location
         _save(data)
 
