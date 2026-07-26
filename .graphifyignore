@@ -1,0 +1,34 @@
+# BEGIN: graphify-managed
+# Graphify managed exclusions
+.git/
+.github/
+.venv/
+venv/
+env/
+node_modules/
+vendor/
+dist/
+build/
+.next/
+.nuxt/
+coverage/
+graphify-out/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.min.js
+*.min.css
+*.map
+*.lock
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+.env
+.env.*
+*.pem
+*.key
+*.crt
+credentials*
+secrets*
+# END: graphify-managed
