@@ -1,0 +1,88 @@
+name: Graphify Knowledge Graph
+
+on:
+  workflow_dispatch:
+  push:
+    paths-ignore:
+      - "graphify-out/**"
+  schedule:
+    - cron: "17 3 * * 1"
+
+concurrency:
+  group: graphify-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+  models: read
+
+jobs:
+  build-graph:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Graphify
+        run: python -m pip install "graphifyy[openai,pdf,office,sql]"
+
+      - name: Build semantic graph
+        id: semantic
+        continue-on-error: true
+        env:
+          OPENAI_API_KEY: ${{ secrets.GITHUB_TOKEN }}
+          OPENAI_BASE_URL: https://models.github.ai/inference
+          OPENAI_MODEL: openai/gpt-4o
+        run: graphify extract . --backend openai --model openai/gpt-4o --max-concurrency 1
+
+      - name: Build deterministic fallback graph
+        if: steps.semantic.outcome != 'success'
+        run: graphify extract . --code-only --force
+
+      - name: Record build metadata
+        env:
+          GRAPHIFY_SEMANTIC_COMPLETE: ${{ steps.semantic.outcome == 'success' }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          graph_path = Path("graphify-out/graph.json")
+          graph = json.loads(graph_path.read_text(encoding="utf-8"))
+          metadata = {
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "ref": os.environ["GITHUB_REF"],
+              "commit": os.environ["GITHUB_SHA"],
+              "generated_at": datetime.now(timezone.utc).isoformat(),
+              "semantic_complete": os.environ["GRAPHIFY_SEMANTIC_COMPLETE"] == "true",
+              "node_count": len(graph.get("nodes", [])),
+              "edge_count": len(graph.get("edges", [])),
+          }
+          Path("graphify-out/BUILD_METADATA.json").write_text(
+              json.dumps(metadata, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Verify graph
+        run: |
+          test -s graphify-out/graph.json
+          test -s graphify-out/GRAPH_REPORT.md
+          python -m json.tool graphify-out/graph.json >/dev/null
+
+      - name: Upload graph artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: graphify-${{ github.event.repository.name }}-${{ github.sha }}
+          path: graphify-out/
+          if-no-files-found: error
+          retention-days: 90
