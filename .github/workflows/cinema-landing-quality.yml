@@ -1,0 +1,62 @@
+name: Cinema Finder Landing Quality
+on:
+  push:
+    paths:
+      - 'web/index.html'
+      - '.github/workflows/cinema-landing-quality.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  quality:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install headless Chromium runner
+        run: |
+          python -m pip install playwright==1.56.0
+          python -m playwright install --with-deps chromium
+      - name: Test real Chromium keyboard, themes, links and layouts
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from playwright.sync_api import sync_playwright
+
+          path = Path("web/index.html")
+          html = path.read_text(encoding="utf-8")
+          assert '<main id="main-content"' in html
+          assert 'https://t.me/pelikula_finder_bot' in html
+          assert "not endorsed or certified by TMDB" in html
+          assert "<h3>" not in html
+
+          with sync_playwright() as p:
+              browser = p.chromium.launch(headless=True)
+              try:
+                  for theme in ("dark", "light"):
+                      for width in (320, 390, 1280):
+                          page = browser.new_page(viewport={"width": width, "height": 800}, color_scheme=theme, reduced_motion="reduce")
+                          page.goto(path.resolve().as_uri())
+                          assert page.title().startswith("Cinema Finder")
+                          assert page.locator("main").count() == 1
+                          assert page.locator(".card h2").count() == 5
+                          assert page.locator('a[href="https://t.me/pelikula_finder_bot"]').count() == 2
+                          overflow = page.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth")
+                          assert overflow <= 1, f"overflow {overflow}px at {width} {theme}"
+                          page.keyboard.press("Tab")
+                          assert page.evaluate("document.activeElement.classList.contains('skip-link')")
+                          page.keyboard.press("Enter")
+                          assert page.url.endswith("#main-content")
+                          assert page.evaluate("document.activeElement.id") == "main-content"
+                          assert page.locator(".steps h2").inner_text() == "How to use it"
+                          bg = page.locator(".card").first.evaluate("(e) => getComputedStyle(e).backgroundColor")
+                          assert bg == ("rgb(255, 255, 255)" if theme == "light" else "rgb(20, 25, 37)")
+                          assert page.locator(".cta").evaluate("(e) => getComputedStyle(e).transform") == "none"
+                          page.close()
+                  print("PASS: 6 Chromium theme/viewport cases, keyboard skip, stable links, no overflow, reduced motion")
+              finally:
+                  browser.close()
+          PY
