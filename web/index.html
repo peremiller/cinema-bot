@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Cinema Finder — movies near you, on Telegram</title>
-<meta name="description" content="Cinema Finder is a Telegram bot that shows what's playing in cinemas near you, in any country, with ratings, plot, runtime and a link to buy tickets online." />
+<meta name="description" content="Cinema Finder is a Telegram bot for discovering movies, nearby cinemas, movie details, and available regional showtime and ticket links." />
 <link rel="icon" type="image/svg+xml" href="icon.svg" />
 <link rel="apple-touch-icon" href="icon.svg" />
 <style>
@@ -18,6 +18,11 @@
     --radius: 16px;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  .skip-link { position: absolute; left: 16px; top: -100px; z-index: 2; background: var(--accent); color: #11161e; padding: 12px 16px; border-radius: 8px; }
+  .skip-link:focus { top: 16px; }
+  a:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
+  a { overflow-wrap: anywhere; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     background: radial-gradient(1200px 600px at 50% -10%, #1b2233 0%, var(--bg) 60%);
@@ -48,7 +53,7 @@
     border-radius: var(--radius); padding: 22px;
   }
   .card .ico { font-size: 26px; }
-  .card h3 { font-size: 17px; margin: 10px 0 6px; }
+  .card h2 { font-size: 17px; margin: 10px 0 6px; }
   .card p { color: var(--muted); font-size: 14.5px; }
   .steps { background: var(--card); border:1px solid #222a3a; border-radius: var(--radius); padding: 28px; margin-top: 8px; }
   .steps h2 { font-size: 22px; margin-bottom: 16px; }
@@ -59,55 +64,79 @@
   footer a { color: var(--accent2); }
   .attr { display:inline-flex; align-items:center; gap:8px; margin-top:14px; }
   .attr img { height: 18px; }
+  @media (max-width: 420px) {
+    .wrap { padding: 48px 16px 64px; }
+    h1 { font-size: clamp(28px, 9vw, 40px); }
+    .tagline { font-size: 16px; }
+    .grid { grid-template-columns: minmax(0, 1fr); gap: 12px; margin: 32px 0; }
+    .steps { padding: 20px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .cta { transition: none; }
+    .cta:hover { transform: none; }
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #f7f9fc; --card: #ffffff; --accent: #704c00; --accent2: #075b95; --text: #152235; --muted: #46536a; }
+    body { background: radial-gradient(1200px 600px at 50% -10%, #dfe9f9 0%, var(--bg) 60%); }
+    .card, .steps { border-color: #c8d2e0; }
+    code { background: #eef3fa; border-color: #ccd7e6; }
+    .cta { background: #075b95; color: #fff; box-shadow: 0 8px 30px rgba(7,91,149,.20); }
+    .cta:hover { box-shadow: 0 12px 36px rgba(7,91,149,.28); }
+    .skip-link { background: #075b95; color: #fff; }
+  }
 </style>
 </head>
 <body>
+  <a class="skip-link" href="#main-content">Skip to main content</a>
   <div class="wrap">
     <header>
       <img class="logo" src="logo.svg" width="96" height="96" alt="Cinema Finder logo" />
       <h1>Cinema <span>Finder</span></h1>
-      <p class="tagline">What's playing in cinemas near you — in any country — with the details to decide, and a link to buy tickets online. All inside Telegram.</p>
+      <p class="tagline">Discover films playing near you, explore movie details, and find available showtimes and ticket options. All inside Telegram.</p>
       <a class="cta" href="https://t.me/pelikula_finder_bot">💬 Open in Telegram</a>
     </header>
 
-    <section class="grid">
+    <main id="main-content" tabindex="-1">
+    <section class="grid" aria-label="Cinema Finder features">
       <div class="card">
         <div class="ico">📍</div>
-        <h3>Cinemas near you</h3>
+        <h2>Cinemas near you</h2>
         <p>Share your location and see nearby cinemas sorted by distance — works worldwide.</p>
       </div>
       <div class="card">
         <div class="ico">⭐</div>
-        <h3>Decide with confidence</h3>
+        <h2>Decide with confidence</h2>
         <p>Rating, synopsis, runtime, genres and a trailer for every film now showing.</p>
       </div>
       <div class="card">
         <div class="ico">🕐</div>
-        <h3>Showtimes</h3>
-        <p>Timeslots for what's on today, scoped to your city.</p>
+        <h2>Showtimes</h2>
+        <p>Find available showtimes for your city; exact times depend on regional provider coverage.</p>
       </div>
       <div class="card">
         <div class="ico">🎟️</div>
-        <h3>Buy online</h3>
-        <p>A direct link to book tickets for the film you pick.</p>
+        <h2>Buy online</h2>
+        <p>Open an external showtimes search for ticket options; availability and booking partners vary by location.</p>
       </div>
       <div class="card">
         <div class="ico">📅</div>
-        <h3>Daily picks</h3>
+        <h2>Daily picks</h2>
         <p>Subscribe and get a once-a-day push of what's playing near you, at a time you choose.</p>
       </div>
     </section>
 
-    <section class="steps">
-      <h2>How to use it</h2>
+    <section class="steps" aria-labelledby="how-to-use">
+      <h2 id="how-to-use">How to use it</h2>
       <ol>
         <li>Open <a href="https://t.me/pelikula_finder_bot" style="color:var(--accent2)">@pelikula_finder_bot</a> in Telegram.</li>
         <li>📎 Share your location, or send <code>/setlocation City, Country</code>.</li>
         <li>Send <code>/cinemas</code> for nearby cinemas, or <code>/movies</code> for what's on.</li>
-        <li>Tap a film to see showtimes and buy tickets.</li>
+        <li>Open the film’s showtimes link to find booking options when providers are available.</li>
         <li>Optional: <code>/subscribe 09:00</code> for a daily push of what's playing.</li>
       </ol>
     </section>
+    </main>
 
     <footer>
       <p>Cinema Finder is a free, personal, non-commercial project.</p>
