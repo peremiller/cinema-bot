@@ -9,12 +9,25 @@ import config
 _lock = threading.Lock()
 
 
-def _load() -> dict:
+class StoreCorruptedError(RuntimeError):
+    """Existing preferences could not be read; do not replace them with defaults."""
+
+
+def _load(*, for_write: bool = False) -> dict:
     try:
         with open(config.STORE_PATH, "r", encoding="utf-8") as fh:
-            return json.load(fh)
-    except (FileNotFoundError, json.JSONDecodeError):
+            data = json.load(fh)
+    except FileNotFoundError:
         return {}
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        if for_write:
+            raise StoreCorruptedError("Saved cinema preferences are unreadable; write refused.") from exc
+        return {}
+    if not isinstance(data, dict):
+        if for_write:
+            raise StoreCorruptedError("Saved cinema preferences must be a JSON object; write refused.")
+        return {}
+    return data
 
 
 def _save(data: dict) -> None:
@@ -33,7 +46,7 @@ def get_location(chat_id: int):
 
 def set_location(chat_id: int, location: dict) -> None:
     with _lock:
-        data = _load()
+        data = _load(for_write=True)
         existing = data.get(str(chat_id)) or {}
         # Preserve a daily-digest subscription across location updates.
         if existing.get("daily"):
@@ -48,7 +61,7 @@ def set_location(chat_id: int, location: dict) -> None:
 def subscribe(chat_id: int, hhmm: str) -> bool:
     """Save a daily-digest time (HH:MM). Returns False if no location yet."""
     with _lock:
-        data = _load()
+        data = _load(for_write=True)
         rec = data.get(str(chat_id))
         if not rec:
             return False
@@ -60,7 +73,7 @@ def subscribe(chat_id: int, hhmm: str) -> bool:
 
 def unsubscribe(chat_id: int) -> None:
     with _lock:
-        data = _load()
+        data = _load(for_write=True)
         rec = data.get(str(chat_id))
         if rec and "daily" in rec:
             rec.pop("daily")
