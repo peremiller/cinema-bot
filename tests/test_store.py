@@ -48,10 +48,10 @@ class StorePreservationTests(unittest.TestCase):
         self.assertEqual(self.path.read_text(encoding="utf-8"), '[]')
 
     def test_unreadable_utf8_cannot_be_overwritten_by_unsubscribe(self):
-        self.path.write_bytes(b"\\xff\\xfe")
+        self.path.write_bytes(bytes((0xff, 0xfe)))
         with self.assertRaises(store.StoreCorruptedError):
             store.unsubscribe(123)
-        self.assertEqual(self.path.read_bytes(), b"\\xff\\xfe")
+        self.assertEqual(self.path.read_bytes(), bytes((0xff, 0xfe)))
 
 
 if __name__ == "__main__":
