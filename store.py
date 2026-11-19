@@ -1,6 +1,7 @@
 """Tiny JSON-file store for per-chat location preferences."""
 import json
 import os
+import re
 import threading
 import time
 
@@ -84,4 +85,18 @@ def all_subscriptions() -> list:
     """Return [(chat_id, 'HH:MM', location_record), ...] for daily subscribers."""
     with _lock:
         data = _load()
-    return [(int(cid), rec["daily"], rec) for cid, rec in data.items() if rec.get("daily")]
+    # One malformed record must not stop everyone else's scheduled digest.
+    # This is a read-only filter: keep all unknown entries on disk for recovery.
+    subscriptions = []
+    for cid, rec in data.items():
+        if not isinstance(rec, dict):
+            continue
+        daily = rec.get("daily")
+        if not isinstance(daily, str) or not re.fullmatch(r"(?:[01]\\d|2[0-3]):[0-5]\\d", daily):
+            continue
+        try:
+            chat_id = int(cid)
+        except (TypeError, ValueError):
+            continue
+        subscriptions.append((chat_id, daily, rec))
+    return subscriptions
