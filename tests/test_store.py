@@ -54,5 +54,28 @@ class StorePreservationTests(unittest.TestCase):
         self.assertEqual(self.path.read_bytes(), bytes((0xff, 0xfe)))
 
 
+    def test_malformed_records_do_not_stop_other_subscribers_or_modify_disk(self):
+        records = {
+            "-1001": {"city": "Manila", "daily": "09:00"},
+            "broken": {"city": "Not a numeric chat", "daily": "10:30"},
+            "1002": None,
+            "1003": ["unexpected", "list"],
+            "1004": {"city": "Cebu", "daily": 930},
+            "1005": {"city": "Invalid", "daily": "25:99"},
+            "1006": {"city": "Davao", "daily": "23:59"},
+        }
+        original = json.dumps(records, ensure_ascii=False).encode("utf-8")
+        self.path.write_bytes(original)
+        found = store.all_subscriptions()
+        self.assertEqual([(cid, when) for cid, when, _ in found],
+                         [(-1001, "09:00"), (1006, "23:59")])
+        self.assertEqual(self.path.read_bytes(), original)
+
+    def test_unreadable_file_does_not_crash_subscription_listing_or_get_rewritten(self):
+        original = b'{ "bad": '
+        self.path.write_bytes(original)
+        self.assertEqual(store.all_subscriptions(), [])
+        self.assertEqual(self.path.read_bytes(), original)
+
 if __name__ == "__main__":
     unittest.main()
