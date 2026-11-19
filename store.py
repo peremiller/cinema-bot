@@ -92,7 +92,7 @@ def all_subscriptions() -> list:
         if not isinstance(rec, dict):
             continue
         daily = rec.get("daily")
-        if not isinstance(daily, str) or not re.fullmatch(r"(?:[01]\\d|2[0-3]):[0-5]\\d", daily):
+        if not isinstance(daily, str) or not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", daily):
             continue
         try:
             chat_id = int(cid)
