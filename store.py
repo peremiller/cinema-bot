@@ -4,6 +4,7 @@ import os
 import re
 import threading
 import time
+import tempfile
 
 import config
 
@@ -32,11 +33,24 @@ def _load(*, for_write: bool = False) -> dict:
 
 
 def _save(data: dict) -> None:
+    """Write a complete new snapshot before atomically replacing existing data."""
     os.makedirs(config.DATA_DIR, exist_ok=True)
-    tmp = config.STORE_PATH + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump(data, fh, indent=2)
-    os.replace(tmp, config.STORE_PATH)
+    tmp = None
+    try:
+        # Unique same-directory temporary files avoid clobbering another writer's
+        # draft file; a failed serialization/replacement must preserve the original.
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=config.DATA_DIR,
+            prefix=".locations-", suffix=".tmp", delete=False,
+        ) as fh:
+            tmp = fh.name
+            json.dump(data, fh, indent=2)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, config.STORE_PATH)
+    finally:
+        if tmp is not None and os.path.exists(tmp):
+            os.unlink(tmp)
 
 
 def get_location(chat_id: int):
