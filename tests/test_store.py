@@ -71,6 +71,25 @@ class StorePreservationTests(unittest.TestCase):
                          [(-1001, "09:00"), (1006, "23:59")])
         self.assertEqual(self.path.read_bytes(), original)
 
+    def test_failed_atomic_replace_preserves_saved_preferences(self):
+        store.set_location(123, {"city": "Manila"})
+        original = self.path.read_bytes()
+        with patch.object(store.os, "replace", side_effect=OSError("simulated replace failure")):
+            with self.assertRaises(OSError):
+                store.set_location(123, {"city": "Cebu"})
+        self.assertEqual(self.path.read_bytes(), original)
+        self.assertEqual(sorted(p.name for p in self.path.parent.iterdir()),
+                         ["locations.json"])
+
+    def test_unserializable_record_does_not_clobber_saved_preferences(self):
+        store.set_location(123, {"city": "Manila"})
+        original = self.path.read_bytes()
+        with self.assertRaises(TypeError):
+            store.set_location(123, {"city": object()})
+        self.assertEqual(self.path.read_bytes(), original)
+        self.assertEqual(sorted(p.name for p in self.path.parent.iterdir()),
+                         ["locations.json"])
+
     def test_unreadable_file_does_not_crash_subscription_listing_or_get_rewritten(self):
         original = b'{ "bad": '
         self.path.write_bytes(original)
