@@ -96,5 +96,30 @@ class StorePreservationTests(unittest.TestCase):
         self.assertEqual(store.all_subscriptions(), [])
         self.assertEqual(self.path.read_bytes(), original)
 
+    def test_malformed_chat_record_never_replaces_existing_data(self):
+        records = {
+            "123": ["unexpected", "list"],
+            "456": {"city": "Cebu", "daily": "09:00"},
+            "789": "unexpected string",
+            "999": 0,
+        }
+        original = json.dumps(records, ensure_ascii=False).encode("utf-8")
+        self.path.write_bytes(original)
+        for chat_id in (123, 789, 999):
+            self.assertIsNone(store.get_location(chat_id))
+            self.assertFalse(store.subscribe(chat_id, "10:30"))
+            store.unsubscribe(chat_id)
+            with self.assertRaises(store.StoreCorruptedError):
+                store.set_location(chat_id, {"city": "Manila"})
+            self.assertEqual(self.path.read_bytes(), original)
+        self.assertEqual(store.get_location(456)["daily"], "09:00")
+        # A different, valid chat must still be able to save without dropping
+        # malformed historic records belonging to other chat IDs.
+        store.set_location(321, {"city": "Davao"})
+        result = json.loads(self.path.read_text(encoding="utf-8"))
+        for chat_id in ("123", "456", "789", "999"):
+            self.assertEqual(result[chat_id], records[chat_id])
+        self.assertEqual(result["321"]["city"], "Davao")
+
 if __name__ == "__main__":
     unittest.main()
