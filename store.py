@@ -56,20 +56,27 @@ def _save(data: dict) -> None:
 def get_location(chat_id: int):
     """Return the saved location dict for a chat, or None."""
     with _lock:
-        return _load().get(str(chat_id))
+        rec = _load().get(str(chat_id))
+        return rec if isinstance(rec, dict) else None
 
 
 def set_location(chat_id: int, location: dict) -> None:
     with _lock:
         data = _load(for_write=True)
-        existing = data.get(str(chat_id)) or {}
+        key = str(chat_id)
+        existing = data.get(key)
+        # A malformed saved record must never be silently replaced with a new
+        # location. Leave its bytes intact so the owner can recover the data.
+        if key in data and not isinstance(existing, dict):
+            raise StoreCorruptedError("Saved chat preferences are not a JSON object; write refused.")
+        existing = existing or {}
         # Preserve a daily-digest subscription across location updates.
         if existing.get("daily"):
             location = {**location, "daily": existing["daily"]}
         # Stamp when this position was captured, so we can tell the user when
         # we're working off an old one-time share.
         location = {**location, "updated": time.time()}
-        data[str(chat_id)] = location
+        data[key] = location
         _save(data)
 
 
@@ -78,7 +85,7 @@ def subscribe(chat_id: int, hhmm: str) -> bool:
     with _lock:
         data = _load(for_write=True)
         rec = data.get(str(chat_id))
-        if not rec:
+        if not isinstance(rec, dict) or not rec:
             return False
         rec["daily"] = hhmm
         data[str(chat_id)] = rec
@@ -90,7 +97,7 @@ def unsubscribe(chat_id: int) -> None:
     with _lock:
         data = _load(for_write=True)
         rec = data.get(str(chat_id))
-        if rec and "daily" in rec:
+        if isinstance(rec, dict) and "daily" in rec:
             rec.pop("daily")
             _save(data)
 
