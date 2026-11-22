@@ -33,6 +33,18 @@ class StorePreservationTests(unittest.TestCase):
         store.unsubscribe(123)
         self.assertNotIn("daily", store.get_location(123))
 
+    def test_invalid_daily_time_never_replaces_saved_schedule(self):
+        store.set_location(123, {"city": "Manila"})
+        self.assertTrue(store.subscribe(123, "09:00"))
+        original = self.path.read_bytes()
+        for invalid in ("9:00", "24:00", "13:60", "12:00\\n", "", None, 930):
+            with self.subTest(invalid=invalid):
+                with self.assertRaises(ValueError):
+                    store.subscribe(123, invalid)
+                self.assertEqual(self.path.read_bytes(), original)
+        self.assertEqual([(cid, when) for cid, when, _ in store.all_subscriptions()],
+                         [(123, "09:00")])
+
     def test_corrupt_json_cannot_be_overwritten(self):
         original = b'{ "123": { "city": "unfinished"'
         self.path.write_bytes(original)
