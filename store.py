@@ -82,6 +82,10 @@ def set_location(chat_id: int, location: dict) -> None:
 
 def subscribe(chat_id: int, hhmm: str) -> bool:
     """Save a daily-digest time (HH:MM). Returns False if no location yet."""
+    # Validate at the storage boundary too, not just the Telegram command.
+    # Invalid input must never overwrite a previously saved daily schedule.
+    if not isinstance(hhmm, str) or not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", hhmm):
+        raise ValueError("Daily digest time must be HH:MM in 24-hour format.")
     with _lock:
         data = _load(for_write=True)
         rec = data.get(str(chat_id))
