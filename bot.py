@@ -162,6 +162,10 @@ async def fresh_location(chat_id: int):
         log.warning("City refresh failed: %s", exc)
         return loc
     fresh["geo_lat"], fresh["geo_lon"] = loc["lat"], loc["lon"]
+    # A reverse-geocoded city refresh must not end a still-active Telegram live
+    # location share. Explicit /setlocation and one-time shares remain unchanged.
+    if location_is_live(loc):
+        fresh["live_until"] = loc["live_until"]
     store.set_location(chat_id, fresh)      # preserves any daily subscription
     if fresh.get("city") != loc.get("city"):
         log.info("City updated %s -> %s for chat %s",
